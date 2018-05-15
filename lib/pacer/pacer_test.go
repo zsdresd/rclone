@@ -116,10 +116,8 @@ func TestDecay(t *testing.T) {
 		{1 * time.Millisecond, 2, (3 * time.Millisecond) / 4},
 		{1 * time.Millisecond, 3, (7 * time.Millisecond) / 8},
 	} {
-		p.sleepTime = test.in
 		p.SetDecayConstant(test.attackConstant)
-		p.defaultPacer(false)
-		got := p.sleepTime
+		got := p.defaultPacer(0, test.in)
 		if got != test.want {
 			t.Errorf("bad sleep want %v got %v", test.want, got)
 		}
@@ -145,10 +143,8 @@ func TestAttack(t *testing.T) {
 		{1 * time.Millisecond, 2, (4 * time.Millisecond) / 3},
 		{1 * time.Millisecond, 3, (8 * time.Millisecond) / 7},
 	} {
-		p.sleepTime = test.in
 		p.SetAttackConstant(test.attackConstant)
-		p.defaultPacer(true)
-		got := p.sleepTime
+		got := p.defaultPacer(2, test.in)
 		if got != test.want {
 			t.Errorf("bad sleep want %v got %v", test.want, got)
 		}
@@ -243,20 +239,18 @@ func TestBeginCallZeroConnections(t *testing.T) {
 func TestDefaultPacer(t *testing.T) {
 	p := New().SetMinSleep(time.Millisecond).SetPacer(DefaultPacer).SetMaxSleep(time.Second).SetDecayConstant(2)
 	for _, test := range []struct {
-		in    time.Duration
-		retry bool
-		want  time.Duration
+		in                 time.Duration
+		consecutiveRetries int
+		want               time.Duration
 	}{
-		{time.Millisecond, true, 2 * time.Millisecond},
-		{time.Second, true, time.Second},
-		{(3 * time.Second) / 4, true, time.Second},
-		{time.Second, false, 750 * time.Millisecond},
-		{1000 * time.Microsecond, false, time.Millisecond},
-		{1200 * time.Microsecond, false, time.Millisecond},
+		{time.Millisecond, 2, 2 * time.Millisecond},
+		{time.Second, 2, time.Second},
+		{(3 * time.Second) / 4, 2, time.Second},
+		{time.Second, 0, 750 * time.Millisecond},
+		{1000 * time.Microsecond, 0, time.Millisecond},
+		{1200 * time.Microsecond, 0, time.Millisecond},
 	} {
-		p.sleepTime = test.in
-		p.defaultPacer(test.retry)
-		got := p.sleepTime
+		got := p.defaultPacer(test.consecutiveRetries, test.in)
 		if got != test.want {
 			t.Errorf("bad sleep want %v got %v", test.want, got)
 		}
@@ -270,31 +264,27 @@ func TestAmazonCloudDrivePacer(t *testing.T) {
 	for _, test := range []struct {
 		in                 time.Duration
 		consecutiveRetries int
-		retry              bool
 		want               time.Duration
 	}{
-		{time.Millisecond, 0, true, time.Millisecond},
-		{10 * time.Millisecond, 0, true, time.Millisecond},
-		{1 * time.Second, 1, true, 500 * time.Millisecond},
-		{1 * time.Second, 2, true, 1 * time.Second},
-		{1 * time.Second, 3, true, 2 * time.Second},
-		{1 * time.Second, 4, true, 4 * time.Second},
-		{1 * time.Second, 5, true, 8 * time.Second},
-		{1 * time.Second, 6, true, 16 * time.Second},
-		{1 * time.Second, 7, true, 32 * time.Second},
-		{1 * time.Second, 8, true, 64 * time.Second},
-		{1 * time.Second, 9, true, 128 * time.Second},
-		{1 * time.Second, 10, true, 128 * time.Second},
-		{1 * time.Second, 11, true, 128 * time.Second},
+		{time.Millisecond, 0, time.Millisecond},
+		{10 * time.Millisecond, 0, time.Millisecond},
+		{1 * time.Second, 1, 500 * time.Millisecond},
+		{1 * time.Second, 2, 1 * time.Second},
+		{1 * time.Second, 3, 2 * time.Second},
+		{1 * time.Second, 4, 4 * time.Second},
+		{1 * time.Second, 5, 8 * time.Second},
+		{1 * time.Second, 6, 16 * time.Second},
+		{1 * time.Second, 7, 32 * time.Second},
+		{1 * time.Second, 8, 64 * time.Second},
+		{1 * time.Second, 9, 128 * time.Second},
+		{1 * time.Second, 10, 128 * time.Second},
+		{1 * time.Second, 11, 128 * time.Second},
 	} {
 		const n = 1000
 		var sum time.Duration
 		// measure average time over n cycles
 		for i := 0; i < n; i++ {
-			p.sleepTime = test.in
-			p.consecutiveRetries = test.consecutiveRetries
-			p.acdPacer(test.retry)
-			sum += p.sleepTime
+			sum += p.acdPacer(test.consecutiveRetries, test.in)
 		}
 		got := sum / n
 		//t.Logf("%+v: got = %v", test, got)
@@ -310,27 +300,23 @@ func TestGoogleDrivePacer(t *testing.T) {
 	for _, test := range []struct {
 		in                 time.Duration
 		consecutiveRetries int
-		retry              bool
 		want               time.Duration
 	}{
-		{time.Millisecond, 0, true, time.Millisecond},
-		{10 * time.Millisecond, 0, true, time.Millisecond},
-		{1 * time.Second, 1, true, 1*time.Second + 500*time.Millisecond},
-		{1 * time.Second, 2, true, 2*time.Second + 500*time.Millisecond},
-		{1 * time.Second, 3, true, 4*time.Second + 500*time.Millisecond},
-		{1 * time.Second, 4, true, 8*time.Second + 500*time.Millisecond},
-		{1 * time.Second, 5, true, 16*time.Second + 500*time.Millisecond},
-		{1 * time.Second, 6, true, 16*time.Second + 500*time.Millisecond},
-		{1 * time.Second, 7, true, 16*time.Second + 500*time.Millisecond},
+		{time.Millisecond, 0, time.Millisecond},
+		{10 * time.Millisecond, 0, time.Millisecond},
+		{1 * time.Second, 1, 1*time.Second + 500*time.Millisecond},
+		{1 * time.Second, 2, 2*time.Second + 500*time.Millisecond},
+		{1 * time.Second, 3, 4*time.Second + 500*time.Millisecond},
+		{1 * time.Second, 4, 8*time.Second + 500*time.Millisecond},
+		{1 * time.Second, 5, 16*time.Second + 500*time.Millisecond},
+		{1 * time.Second, 6, 16*time.Second + 500*time.Millisecond},
+		{1 * time.Second, 7, 16*time.Second + 500*time.Millisecond},
 	} {
 		const n = 1000
 		var sum time.Duration
 		// measure average time over n cycles
 		for i := 0; i < n; i++ {
-			p.sleepTime = test.in
-			p.consecutiveRetries = test.consecutiveRetries
-			p.drivePacer(test.retry)
-			sum += p.sleepTime
+			sum += p.drivePacer(test.consecutiveRetries, test.in)
 		}
 		got := sum / n
 		//t.Logf("%+v: got = %v", test, got)

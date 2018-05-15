@@ -10,6 +10,9 @@ import (
 	"github.com/ncw/rclone/fs/fserrors"
 )
 
+// paceFn is a switchable pacing function to return the new sleep time
+type paceFn func(consecutiveRetries int, oldSleepTime time.Duration) (newSleepTime time.Duration)
+
 // Pacer state
 type Pacer struct {
 	mu                 sync.Mutex    // Protecting read/writes
@@ -22,7 +25,7 @@ type Pacer struct {
 	retries            int           // Max number of retries
 	maxConnections     int           // Maximum number of concurrent connections
 	connTokens         chan struct{} // Connection tokens
-	calculatePace      func(bool)    // switchable pacing algorithm - call with mu held
+	calculatePace      paceFn        // switchable pacing algorithm - call with mu held
 	consecutiveRetries int           // number of consecutive retries
 }
 
@@ -216,38 +219,32 @@ func (p *Pacer) beginCall() {
 	p.mu.Unlock()
 }
 
-// exponentialImplementation implements a exponentialImplementation up
-// and down pacing algorithm
+// defaultPacer implements an exponential up and down pacing algorithm
 //
 // See the description for DefaultPacer
 //
-// This should calculate a new sleepTime.  It takes a boolean as to
-// whether the operation should be retried or not.
+// This should calculate a new sleepTime.  It takes the number of
+// consecutive retries as whether the operation should be retried or
+// not.  0 means the current operation was a success.
 //
 // Call with p.mu held
-func (p *Pacer) defaultPacer(retry bool) {
-	oldSleepTime := p.sleepTime
-	if retry {
-		if p.attackConstant == 0 {
-			p.sleepTime = p.maxSleep
-		} else {
-			p.sleepTime = (p.sleepTime << p.attackConstant) / ((1 << p.attackConstant) - 1)
-		}
-		if p.sleepTime > p.maxSleep {
-			p.sleepTime = p.maxSleep
-		}
-		if p.sleepTime != oldSleepTime {
-			fs.Debugf("pacer", "Rate limited, increasing sleep to %v", p.sleepTime)
+func (p *Pacer) defaultPacer(consecutiveRetries int, oldSleepTime time.Duration) (newSleepTime time.Duration) {
+	if consecutiveRetries == 0 {
+		newSleepTime = (oldSleepTime<<p.decayConstant - oldSleepTime) >> p.decayConstant
+		if newSleepTime < p.minSleep {
+			newSleepTime = p.minSleep
 		}
 	} else {
-		p.sleepTime = (p.sleepTime<<p.decayConstant - p.sleepTime) >> p.decayConstant
-		if p.sleepTime < p.minSleep {
-			p.sleepTime = p.minSleep
+		if p.attackConstant == 0 {
+			newSleepTime = p.maxSleep
+		} else {
+			newSleepTime = (oldSleepTime << p.attackConstant) / ((1 << p.attackConstant) - 1)
 		}
-		if p.sleepTime != oldSleepTime {
-			fs.Debugf("pacer", "Reducing sleep to %v", p.sleepTime)
+		if newSleepTime > p.maxSleep {
+			newSleepTime = p.maxSleep
 		}
 	}
+	return newSleepTime
 }
 
 // acdPacer implements a truncated exponential backoff
@@ -255,17 +252,14 @@ func (p *Pacer) defaultPacer(retry bool) {
 //
 // See the description for AmazonCloudDrivePacer
 //
-// This should calculate a new sleepTime.  It takes a boolean as to
-// whether the operation should be retried or not.
+// This should calculate a new sleepTime.  It takes the number of
+// consecutive retries as whether the operation should be retried or
+// not.  0 means the current operation was a success.
 //
 // Call with p.mu held
-func (p *Pacer) acdPacer(retry bool) {
-	consecutiveRetries := p.consecutiveRetries
+func (p *Pacer) acdPacer(consecutiveRetries int, oldSleepTime time.Duration) (newSleepTime time.Duration) {
 	if consecutiveRetries == 0 {
-		if p.sleepTime != p.minSleep {
-			p.sleepTime = p.minSleep
-			fs.Debugf("pacer", "Resetting sleep to minimum %v on success", p.sleepTime)
-		}
+		newSleepTime = p.minSleep
 	} else {
 		if consecutiveRetries > 9 {
 			consecutiveRetries = 9
@@ -274,12 +268,12 @@ func (p *Pacer) acdPacer(retry bool) {
 		// maxSleep is 2**(consecutiveRetries-1) seconds
 		maxSleep := time.Second << uint(consecutiveRetries-1)
 		// actual sleep is random from 0..maxSleep
-		p.sleepTime = time.Duration(rand.Int63n(int64(maxSleep)))
-		if p.sleepTime < p.minSleep {
-			p.sleepTime = p.minSleep
+		newSleepTime = time.Duration(rand.Int63n(int64(maxSleep)))
+		if newSleepTime < p.minSleep {
+			newSleepTime = p.minSleep
 		}
-		fs.Debugf("pacer", "Rate limited, sleeping for %v (%d consecutive low level retries)", p.sleepTime, p.consecutiveRetries)
 	}
+	return newSleepTime
 }
 
 // drivePacer implements a truncated exponential backoff strategy with
@@ -287,26 +281,23 @@ func (p *Pacer) acdPacer(retry bool) {
 //
 // See the description for GoogleDrivePacer
 //
-// This should calculate a new sleepTime.  It takes a boolean as to
-// whether the operation should be retried or not.
+// This should calculate a new sleepTime.  It takes the number of
+// consecutive retries as whether the operation should be retried or
+// not.  0 means the current operation was a success.
 //
 // Call with p.mu held
-func (p *Pacer) drivePacer(retry bool) {
-	consecutiveRetries := p.consecutiveRetries
+func (p *Pacer) drivePacer(consecutiveRetries int, oldSleepTime time.Duration) (newSleepTime time.Duration) {
 	if consecutiveRetries == 0 {
-		if p.sleepTime != p.minSleep {
-			p.sleepTime = p.minSleep
-			fs.Debugf("pacer", "Resetting sleep to minimum %v on success", p.sleepTime)
-		}
+		newSleepTime = p.minSleep
 	} else {
 		if consecutiveRetries > 5 {
 			consecutiveRetries = 5
 		}
 		// consecutiveRetries starts at 1 so go from 1,2,3,4,5,5 => 1,2,4,8,16,16
 		// maxSleep is 2**(consecutiveRetries-1) seconds + random milliseconds
-		p.sleepTime = time.Second<<uint(consecutiveRetries-1) + time.Duration(rand.Int63n(int64(time.Second)))
-		fs.Debugf("pacer", "Rate limited, sleeping for %v (%d consecutive low level retries)", p.sleepTime, p.consecutiveRetries)
+		newSleepTime = time.Second<<uint(consecutiveRetries-1) + time.Duration(rand.Int63n(int64(time.Second)))
 	}
+	return newSleepTime
 }
 
 // endCall implements the pacing algorithm
@@ -323,7 +314,13 @@ func (p *Pacer) endCall(retry bool) {
 	} else {
 		p.consecutiveRetries = 0
 	}
-	p.calculatePace(retry)
+	oldSleepTime := p.sleepTime
+	p.sleepTime = p.calculatePace(p.consecutiveRetries, p.sleepTime)
+	if p.sleepTime > p.minSleep {
+		fs.Debugf("pacer", "Rate limited, sleeping for %v (%d consecutive low level retries)", p.sleepTime, p.consecutiveRetries)
+	} else if oldSleepTime > p.minSleep {
+		fs.Debugf("pacer", "Resetting sleep to minimum %v on success", p.sleepTime)
+	}
 	p.mu.Unlock()
 }
 
