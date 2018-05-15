@@ -17,6 +17,7 @@ type paceFn func(consecutiveRetries int, oldSleepTime time.Duration) (newSleepTi
 type Pacer struct {
 	mu                 sync.Mutex    // Protecting read/writes
 	minSleep           time.Duration // minimum sleep time
+	minRetrySleep      time.Duration // minimum retry sleep time
 	maxSleep           time.Duration // maximum sleep time
 	decayConstant      uint          // decay constant
 	attackConstant     uint          // attack constant
@@ -41,6 +42,9 @@ const (
 	//
 	// The sleep never goes below that set with SetMinSleep or
 	// above that set with SetMaxSleep.
+	//
+	// If SetMinRetrySleep has been called then the minimum sleep
+	// on a retry will be that value.
 	DefaultPacer = Type(iota)
 
 	// AmazonCloudDrivePacer is a specialised pacer for Amazon Drive
@@ -114,12 +118,19 @@ func (p *Pacer) SetMinSleep(t time.Duration) *Pacer {
 	return p
 }
 
+// SetMinRetrySleep sets the minimum retry sleep time for the pacer
+func (p *Pacer) SetMinRetrySleep(t time.Duration) *Pacer {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.minRetrySleep = t
+	return p
+}
+
 // SetMaxSleep sets the maximum sleep time for the pacer
 func (p *Pacer) SetMaxSleep(t time.Duration) *Pacer {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.maxSleep = t
-	p.sleepTime = p.minSleep
 	return p
 }
 
@@ -242,6 +253,11 @@ func (p *Pacer) defaultPacer(consecutiveRetries int, oldSleepTime time.Duration)
 		}
 		if newSleepTime > p.maxSleep {
 			newSleepTime = p.maxSleep
+		}
+		// If minRetrySleep is set then make sure this is the
+		// minimum sleep time on a retry
+		if p.minRetrySleep > 0 && newSleepTime < p.minRetrySleep {
+			newSleepTime = p.minRetrySleep
 		}
 	}
 	return newSleepTime

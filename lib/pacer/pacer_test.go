@@ -255,6 +255,30 @@ func TestDefaultPacer(t *testing.T) {
 			t.Errorf("bad sleep want %v got %v", test.want, got)
 		}
 	}
+}
+
+func TestDefaultPacerMinRetrySleep(t *testing.T) {
+	p := New().SetMinSleep(time.Millisecond).SetPacer(DefaultPacer).SetMaxSleep(time.Second).SetDecayConstant(2).SetMinRetrySleep(100 * time.Millisecond)
+	for _, test := range []struct {
+		in                 time.Duration
+		consecutiveRetries int
+		want               time.Duration
+	}{
+		{time.Millisecond, 2, 100 * time.Millisecond},
+		{75 * time.Millisecond, 2, 150 * time.Millisecond},
+		{125 * time.Millisecond, 2, 250 * time.Millisecond},
+		{time.Second, 2, time.Second},
+		{(3 * time.Second) / 4, 2, time.Second},
+		{time.Second, 0, 750 * time.Millisecond},
+		{20 * time.Millisecond, 0, 15 * time.Millisecond},
+		{1000 * time.Microsecond, 0, time.Millisecond},
+		{1200 * time.Microsecond, 0, time.Millisecond},
+	} {
+		got := p.defaultPacer(test.consecutiveRetries, test.in)
+		if got != test.want {
+			t.Errorf("bad sleep want %v got %v", test.want, got)
+		}
+	}
 
 }
 
