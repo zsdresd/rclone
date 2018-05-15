@@ -37,7 +37,8 @@ const (
 	rcloneBusinessClientID              = "52857fec-4bc2-483f-9f1b-5fe28e97532c"
 	rcloneBusinessEncryptedClientSecret = "6t4pC8l6L66SFYVIi8PgECDyjXy_ABo1nsTaE-Lr9LpzC6yT4vNOwHsakwwdEui0O6B0kX8_xbBLj91J"
 	minSleep                            = 10 * time.Millisecond
-	maxSleep                            = 2 * time.Second
+	minRetrySleep                       = 1 * time.Second
+	maxSleep                            = 30 * time.Second
 	decayConstant                       = 2                                     // bigger for slower decay, exponential
 	rootURLPersonal                     = "https://api.onedrive.com/v1.0/drive" // root URL for requests
 	discoveryServiceURL                 = "https://api.office.com/discovery/"
@@ -363,7 +364,7 @@ func NewFs(name, root string) (fs.Fs, error) {
 		name:       name,
 		root:       root,
 		srv:        rest.NewClient(oAuthClient).SetRoot(rootURL),
-		pacer:      pacer.New().SetMinSleep(minSleep).SetMaxSleep(maxSleep).SetDecayConstant(decayConstant),
+		pacer:      pacer.New().SetMinSleep(minSleep).SetMinRetrySleep(minRetrySleep).SetMaxSleep(maxSleep).SetDecayConstant(decayConstant),
 		isBusiness: resourceURL != "",
 	}
 	f.features = (&fs.Features{
