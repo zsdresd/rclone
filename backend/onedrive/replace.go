@@ -6,14 +6,11 @@ OneDrive reserved characters
 The following characters are OneDrive reserved characters, and can't
 be used in OneDrive folder and file names.
 
-  onedrive-reserved  = "/" / "\" / "*" / "<" / ">" / "?" / ":" / "|"
-  onedrive-business-reserved
-                     = "/" / "\" / "*" / "<" / ">" / "?" / ":" / "|" / "#" / "%"
+  onedrive-reserved (Business / Personal)  = "/" / "\" / "*" / "<" / ">" / "?" / ":" / "|"
 
-Note: Folder names can't end with a period (.).
+Note: Folder / file names can't end with a period (.).
 
-Note: OneDrive for Business file or folder names cannot begin with a
-tilde ('~').
+Note: Folder / file names can't start or end with a space ( ).
 
 */
 
@@ -40,8 +37,6 @@ var (
 		'?':  '？', // FULLWIDTH QUESTION MARK
 		':':  '：', // FULLWIDTH COLON
 		'|':  '｜', // FULLWIDTH VERTICAL LINE
-		'#':  '＃', // FULLWIDTH NUMBER SIGN
-		'%':  '％', // FULLWIDTH PERCENT SIGN
 		'"':  '＂', // FULLWIDTH QUOTATION MARK - not on the list but seems to be reserved
 		'.':  '．', // FULLWIDTH FULL STOP
 		'~':  '～', // FULLWIDTH TILDE
@@ -49,7 +44,7 @@ var (
 	}
 	invCharMap           map[rune]rune
 	fixEndingInPeriod    = regexp.MustCompile(`\.(/|$)`)
-	fixStartingWithTilde = regexp.MustCompile(`(/|^)~`)
+	fixEndingWithSpace   = regexp.MustCompile(` (/|$)`)
 	fixStartingWithSpace = regexp.MustCompile(`(/|^) `)
 )
 
@@ -64,12 +59,10 @@ func init() {
 // replaceReservedChars takes a path and substitutes any reserved
 // characters in it
 func replaceReservedChars(in string) string {
-	// Folder names can't end with a period '.'
+	// Names can't end with a period '.'
 	in = fixEndingInPeriod.ReplaceAllString(in, string(charMap['.'])+"$1")
-	// OneDrive for Business file or folder names cannot begin with a tilde '~'
-	in = fixStartingWithTilde.ReplaceAllString(in, "$1"+string(charMap['~']))
-	// Apparently file names can't start with space either
 	in = fixStartingWithSpace.ReplaceAllString(in, "$1"+string(charMap[' ']))
+	in = fixEndingWithSpace.ReplaceAllString(in, string(charMap[' '])+"$1")
 	// Replace reserved characters
 	return strings.Map(func(c rune) rune {
 		if replacement, ok := charMap[c]; ok && c != '.' && c != '~' && c != ' ' {

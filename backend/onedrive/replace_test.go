@@ -9,13 +9,13 @@ func TestReplace(t *testing.T) {
 	}{
 		{"", ""},
 		{"abc 123", "abc 123"},
-		{`\*<>?:|#%".~`, `＼＊＜＞？：｜＃％＂.~`},
-		{`\*<>?:|#%".~/\*<>?:|#%".~`, `＼＊＜＞？：｜＃％＂.~/＼＊＜＞？：｜＃％＂.~`},
+		{`\*<>?:|#%".~`, `＼＊＜＞？：｜#%＂.~`},
+		{`\*<>?:|#%".~/\*<>?:|#%".~`, `＼＊＜＞？：｜#%＂.~/＼＊＜＞？：｜#%＂.~`},
 		{" leading space", "␠leading space"},
-		{"~leading tilde", "～leading tilde"},
+		{"trailing space ", "trailing space␠"},
 		{"trailing dot.", "trailing dot．"},
 		{" leading space/ leading space/ leading space", "␠leading space/␠leading space/␠leading space"},
-		{"~leading tilde/~leading tilde/~leading tilde", "～leading tilde/～leading tilde/～leading tilde"},
+		{"trailing space /trailing space /trailing space ", "trailing space␠/trailing space␠/trailing space␠"},
 		{"trailing dot./trailing dot./trailing dot.", "trailing dot．/trailing dot．/trailing dot．"},
 	} {
 		got := replaceReservedChars(test.in)
