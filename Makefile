@@ -27,7 +27,7 @@ ifndef RELEASE_TAG
 	TAG := $(TAG)-beta
 endif
 GO_VERSION := $(shell go version)
-GO_FILES := $(shell go list ./... | grep -v /vendor/ )
+GO_FILES := $(shell go list ./... )
 ifdef BETA_SUBDIR
 	BETA_SUBDIR := /$(BETA_SUBDIR)
 endif
@@ -91,16 +91,19 @@ release_dep:
 	go run bin/get-github-release.go -extract nfpm goreleaser/nfpm 'nfpm_.*_Linux_x86_64.tar.gz'
 	go run bin/get-github-release.go -extract github-release aktau/github-release 'linux-amd64-github-release.tar.bz2'
 
-# Update dependencies
+showupdates:
+	@echo "*** Direct dependencies that could be updated ***"
+	@GO111MODULE=on go list -u -f '{{if (and (not (or .Main .Indirect)) .Update)}}{{.Path}}: {{.Version}} -> {{.Update.Version}}{{end}}' -m all 2> /dev/null
+
+# Update direct and indirect dependencies and test dependencies
 update:
-	GO111MODULE=on go get -u ./...
+	GO111MODULE=on go get -u -t ./...
+	-#GO111MODULE=on go get -d $(go list -m -f '{{if not (or .Main .Indirect)}}{{.Path}}{{end}}' all)
 	GO111MODULE=on go mod tidy
-	GO111MODULE=on go mod vendor
 
 # Tidy the module dependencies
 tidy:
 	GO111MODULE=on go mod tidy
-	GO111MODULE=on go mod vendor
 
 doc:	rclone.1 MANUAL.html MANUAL.txt rcdocs commanddocs
 
