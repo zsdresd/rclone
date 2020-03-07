@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -69,11 +70,26 @@ func mountOptions(device string, mountpoint string) (options []string) {
 		}
 	}
 
+	// determine if ExtraOptions already has an opt in
+	hasOption := func(opt string) bool {
+		opt += "="
+		for _, option := range mountlib.ExtraOptions {
+			if strings.HasPrefix(option, opt) {
+				return true
+			}
+		}
+		return false
+	}
+
 	// Windows options
 	if runtime.GOOS == "windows" {
 		// These cause WinFsp to mean the current user
-		options = append(options, "-o", "uid=-1")
-		options = append(options, "-o", "gid=-1")
+		if !hasOption("uid") {
+			options = append(options, "-o", "uid=-1")
+		}
+		if !hasOption("gid") {
+			options = append(options, "-o", "gid=-1")
+		}
 		options = append(options, "--FileSystemName=rclone")
 	}
 
