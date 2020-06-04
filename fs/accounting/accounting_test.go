@@ -2,6 +2,7 @@ package accounting
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -29,7 +30,7 @@ var (
 func TestNewAccountSizeName(t *testing.T) {
 	in := ioutil.NopCloser(bytes.NewBuffer([]byte{1}))
 	stats := NewStats()
-	acc := newAccountSizeName(stats, in, 1, "test")
+	acc := newAccountSizeName(context.Background(), stats, in, 1, "test")
 	assert.Equal(t, in, acc.in)
 	assert.Equal(t, acc, stats.inProgress.get("test"))
 	err := acc.Close()
@@ -43,14 +44,14 @@ func TestAccountWithBuffer(t *testing.T) {
 	in := ioutil.NopCloser(bytes.NewBuffer([]byte{1}))
 
 	stats := NewStats()
-	acc := newAccountSizeName(stats, in, -1, "test")
+	acc := newAccountSizeName(context.Background(), stats, in, -1, "test")
 	acc.WithBuffer()
 	// should have a buffer for an unknown size
 	_, ok := acc.in.(*asyncreader.AsyncReader)
 	require.True(t, ok)
 	assert.NoError(t, acc.Close())
 
-	acc = newAccountSizeName(stats, in, 1, "test")
+	acc = newAccountSizeName(context.Background(), stats, in, 1, "test")
 	acc.WithBuffer()
 	// should not have a buffer for a small size
 	_, ok = acc.in.(*asyncreader.AsyncReader)
@@ -63,7 +64,7 @@ func TestAccountGetUpdateReader(t *testing.T) {
 		return func(t *testing.T) {
 			in := ioutil.NopCloser(bytes.NewBuffer([]byte{1}))
 			stats := NewStats()
-			acc := newAccountSizeName(stats, in, 1, "test")
+			acc := newAccountSizeName(context.Background(), stats, in, 1, "test")
 
 			assert.Equal(t, in, acc.GetReader())
 			assert.Equal(t, acc, stats.inProgress.get("test"))
@@ -74,7 +75,7 @@ func TestAccountGetUpdateReader(t *testing.T) {
 			}
 
 			in2 := ioutil.NopCloser(bytes.NewBuffer([]byte{1}))
-			acc.UpdateReader(in2)
+			acc.UpdateReader(context.Background(), in2)
 
 			assert.Equal(t, in2, acc.GetReader())
 			assert.Equal(t, acc, stats.inProgress.get("test"))
@@ -89,7 +90,7 @@ func TestAccountGetUpdateReader(t *testing.T) {
 func TestAccountRead(t *testing.T) {
 	in := ioutil.NopCloser(bytes.NewBuffer([]byte{1, 2, 3}))
 	stats := NewStats()
-	acc := newAccountSizeName(stats, in, 1, "test")
+	acc := newAccountSizeName(context.Background(), stats, in, 1, "test")
 
 	assert.True(t, acc.values.start.IsZero())
 	acc.values.mu.Lock()
@@ -130,7 +131,7 @@ func testAccountWriteTo(t *testing.T, withBuffer bool) {
 	}
 	in := ioutil.NopCloser(bytes.NewBuffer(buf))
 	stats := NewStats()
-	acc := newAccountSizeName(stats, in, int64(len(buf)), "test")
+	acc := newAccountSizeName(context.Background(), stats, in, int64(len(buf)), "test")
 	if withBuffer {
 		acc = acc.WithBuffer()
 	}
@@ -170,7 +171,7 @@ func TestAccountWriteToWithBuffer(t *testing.T) {
 func TestAccountString(t *testing.T) {
 	in := ioutil.NopCloser(bytes.NewBuffer([]byte{1, 2, 3}))
 	stats := NewStats()
-	acc := newAccountSizeName(stats, in, 3, "test")
+	acc := newAccountSizeName(context.Background(), stats, in, 3, "test")
 
 	// FIXME not an exhaustive test!
 
@@ -190,7 +191,7 @@ func TestAccountString(t *testing.T) {
 func TestAccountAccounter(t *testing.T) {
 	in := ioutil.NopCloser(bytes.NewBuffer([]byte{1, 2, 3}))
 	stats := NewStats()
-	acc := newAccountSizeName(stats, in, 3, "test")
+	acc := newAccountSizeName(context.Background(), stats, in, 3, "test")
 
 	assert.True(t, in == acc.OldStream())
 
@@ -257,7 +258,7 @@ func TestAccountMaxTransfer(t *testing.T) {
 
 	in := ioutil.NopCloser(bytes.NewBuffer(make([]byte, 100)))
 	stats := NewStats()
-	acc := newAccountSizeName(stats, in, 1, "test")
+	acc := newAccountSizeName(context.Background(), stats, in, 1, "test")
 
 	var b = make([]byte, 10)
 
@@ -274,7 +275,7 @@ func TestAccountMaxTransfer(t *testing.T) {
 
 	fs.Config.CutoffMode = fs.CutoffModeSoft
 	stats = NewStats()
-	acc = newAccountSizeName(stats, in, 1, "test")
+	acc = newAccountSizeName(context.Background(), stats, in, 1, "test")
 
 	n, err = acc.Read(b)
 	assert.Equal(t, 10, n)
@@ -299,7 +300,7 @@ func TestAccountMaxTransferWriteTo(t *testing.T) {
 
 	in := ioutil.NopCloser(readers.NewPatternReader(1024))
 	stats := NewStats()
-	acc := newAccountSizeName(stats, in, 1, "test")
+	acc := newAccountSizeName(context.Background(), stats, in, 1, "test")
 
 	var b bytes.Buffer
 
