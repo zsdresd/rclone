@@ -192,6 +192,10 @@ func (acc *Account) averageLoop() {
 // Check the read before it has happened is valid returning the number
 // of bytes remaining to read.
 func (acc *Account) checkReadBefore() (bytesUntilLimit int64, err error) {
+	// Check to see if context is cancelled
+	if err = acc.ctx.Err(); err != nil {
+		return 0, err
+	}
 	acc.values.mu.Lock()
 	if acc.values.max >= 0 {
 		bytesUntilLimit = acc.values.max - acc.stats.GetBytes()
@@ -211,7 +215,7 @@ func (acc *Account) checkReadBefore() (bytesUntilLimit int64, err error) {
 }
 
 // Check the read call after the read has happened
-func checkReadAfter(bytesUntilLimit int64, n int, err error) (outN int, outErr error) {
+func (acc *Account) checkReadAfter(bytesUntilLimit int64, n int, err error) (outN int, outErr error) {
 	bytesUntilLimit -= int64(n)
 	if bytesUntilLimit < 0 {
 		// chop the overage off
@@ -265,7 +269,7 @@ func (acc *Account) read(in io.Reader, p []byte) (n int, err error) {
 	if err == nil {
 		n, err = in.Read(p)
 		acc.accountRead(n)
-		n, err = checkReadAfter(bytesUntilLimit, n, err)
+		n, err = acc.checkReadAfter(bytesUntilLimit, n, err)
 	}
 	return n, err
 }
@@ -294,7 +298,7 @@ func (awt *accountWriteTo) Write(p []byte) (n int, err error) {
 	bytesUntilLimit, err := awt.acc.checkReadBefore()
 	if err == nil {
 		n, err = awt.w.Write(p)
-		n, err = checkReadAfter(bytesUntilLimit, n, err)
+		n, err = awt.acc.checkReadAfter(bytesUntilLimit, n, err)
 		awt.acc.accountRead(n)
 	}
 	return n, err
@@ -322,7 +326,7 @@ func (acc *Account) AccountRead(n int) (err error) {
 	defer acc.mu.Unlock()
 	bytesUntilLimit, err := acc.checkReadBefore()
 	if err == nil {
-		n, err = checkReadAfter(bytesUntilLimit, n, err)
+		n, err = acc.checkReadAfter(bytesUntilLimit, n, err)
 		acc.accountRead(n)
 	}
 	return err
