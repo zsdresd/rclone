@@ -75,6 +75,7 @@ type trackRenamesStrategy byte
 const (
 	trackRenamesStrategyHash trackRenamesStrategy = 1 << iota
 	trackRenamesStrategyModtime
+	trackRenamesStrategyLeaf
 )
 
 func (strategy trackRenamesStrategy) hash() bool {
@@ -83,6 +84,10 @@ func (strategy trackRenamesStrategy) hash() bool {
 
 func (strategy trackRenamesStrategy) modTime() bool {
 	return (strategy & trackRenamesStrategyModtime) != 0
+}
+
+func (strategy trackRenamesStrategy) leaf() bool {
+	return (strategy & trackRenamesStrategyLeaf) != 0
 }
 
 func newSyncCopyMove(ctx context.Context, fdst, fsrc fs.Fs, deleteMode fs.DeleteMode, DoMove bool, deleteEmptySrcDirs bool, copyEmptySrcDirs bool) (*syncCopyMove, error) {
@@ -607,6 +612,8 @@ func parseTrackRenamesStrategy(strategies string) (strategy trackRenamesStrategy
 			strategy |= trackRenamesStrategyHash
 		case "modtime":
 			strategy |= trackRenamesStrategyModtime
+		case "leaf":
+			strategy |= trackRenamesStrategyLeaf
 		case "size":
 			// ignore
 		default:
@@ -636,7 +643,8 @@ func (s *syncCopyMove) renameID(obj fs.Object, renamesStrategy trackRenamesStrat
 			return ""
 		}
 
-		fmt.Fprintf(&builder, ",%s", hash)
+		builder.WriteRune(',')
+		builder.WriteString(hash)
 	}
 
 	if renamesStrategy.modTime() {
@@ -662,6 +670,11 @@ func (s *syncCopyMove) renameID(obj fs.Object, renamesStrategy trackRenamesStrat
 		// NB modTime.Unix()*int64(time.Nanosecond) won't overflow an int64 until the year 2264
 		timeHash := (modTime.Unix()*int64(time.Nanosecond) + modTime.UnixNano() + rounding) / divisor
 		fmt.Fprintf(&builder, ",%d", timeHash)
+	}
+
+	if renamesStrategy.leaf() {
+		builder.WriteRune(',')
+		builder.WriteString(path.Base(obj.Remote()))
 	}
 
 	return builder.String()
