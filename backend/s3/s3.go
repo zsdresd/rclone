@@ -575,7 +575,10 @@ This ACL is used for creating objects and if bucket_acl isn't set, for creating 
 For more info visit https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#canned-acl
 
 Note that this ACL is applied when server side copying objects as S3
-doesn't copy the ACL from the source but rather writes a fresh one.`,
+doesn't copy the ACL from the source but rather writes a fresh one.
+
+If the ACL is set as the string "unset" then rclone won't set the ACL
+header so it will use the default of the cloud provider.`,
 			Examples: []fs.OptionExample{{
 				Value:    "private",
 				Help:     "Owner gets FULL_CONTROL. No one else has access rights (default).",
@@ -1252,6 +1255,9 @@ func NewFs(name, root string, m configmap.Mapper) (fs.Fs, error) {
 	if opt.ACL == "" {
 		opt.ACL = "private"
 	}
+	if opt.ACL == "unset" {
+		opt.ACL = ""
+	}
 	if opt.BucketACL == "" {
 		opt.BucketACL = opt.ACL
 	}
@@ -1741,7 +1747,9 @@ func (f *Fs) makeBucket(ctx context.Context, bucket string) error {
 	return f.cache.Create(bucket, func() error {
 		req := s3.CreateBucketInput{
 			Bucket: &bucket,
-			ACL:    &f.opt.BucketACL,
+		}
+		if f.opt.BucketACL != "" {
+			req.ACL = &f.opt.BucketACL
 		}
 		if f.opt.LocationConstraint != "" {
 			req.CreateBucketConfiguration = &s3.CreateBucketConfiguration{
@@ -1806,7 +1814,9 @@ func pathEscape(s string) string {
 // method
 func (f *Fs) copy(ctx context.Context, req *s3.CopyObjectInput, dstBucket, dstPath, srcBucket, srcPath string, srcSize int64) error {
 	req.Bucket = &dstBucket
-	req.ACL = &f.opt.ACL
+	if f.opt.ACL != "" {
+		req.ACL = &f.opt.ACL
+	}
 	req.Key = &dstPath
 	source := pathEscape(path.Join(srcBucket, srcPath))
 	req.CopySource = &source
@@ -2434,10 +2444,12 @@ func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, op
 	mimeType := fs.MimeType(ctx, src)
 	req := s3.PutObjectInput{
 		Bucket:      &bucket,
-		ACL:         &o.fs.opt.ACL,
 		Key:         &bucketPath,
 		ContentType: &mimeType,
 		Metadata:    metadata,
+	}
+	if o.fs.opt.ACL != "" {
+		req.ACL = &o.fs.opt.ACL
 	}
 	if md5sum != "" {
 		req.ContentMD5 = &md5sum
