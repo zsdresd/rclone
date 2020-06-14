@@ -367,7 +367,7 @@ func (f *Filter) InActive() bool {
 		len(f.Opt.ExcludeFile) == 0)
 }
 
-// IncludeRemotes returns whether this remote name should be included
+// IncludeRemote returns whether this remote name should be included
 // into the sync or not.
 //
 // It only checks the name, not the size or modtime
