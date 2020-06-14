@@ -147,17 +147,6 @@ func newSyncCopyMove(ctx context.Context, fdst, fsrc fs.Fs, deleteMode fs.Delete
 	if err != nil {
 		return nil, err
 	}
-	if s.noCheckDest {
-		if s.deleteMode != fs.DeleteModeOff {
-			return nil, errors.New("can't use --no-check-dest with sync: use copy instead")
-		}
-		if fs.Config.Immutable {
-			return nil, errors.New("can't use --no-check-dest with --immutable")
-		}
-		if s.backupDir != nil {
-			return nil, errors.New("can't use --no-check-dest with --backup-dir")
-		}
-	}
 	if s.trackRenames {
 		// Don't track renames for remotes without server-side move support.
 		if !operations.CanServerSideMove(fdst) {
@@ -195,6 +184,24 @@ func newSyncCopyMove(ctx context.Context, fdst, fsrc fs.Fs, deleteMode fs.Delete
 		s.backupDir, err = operations.BackupDir(fdst, fsrc, "")
 		if err != nil {
 			return nil, err
+		}
+		// If just using --suffix and this is a sync then check we have an exclude
+		if fs.Config.BackupDir == "" && s.deleteMode != fs.DeleteModeOff {
+			remote := operations.SuffixName("dir/subdir/testfile.txt")
+			if filter.Active.IncludeRemote(remote) {
+				return nil, errors.New("can't use --suffix without --backup-dir with sync unless a filter is set to exclude the backed up files")
+			}
+		}
+	}
+	if s.noCheckDest {
+		if s.deleteMode != fs.DeleteModeOff {
+			return nil, errors.New("can't use --no-check-dest with sync: use copy instead")
+		}
+		if fs.Config.Immutable {
+			return nil, errors.New("can't use --no-check-dest with --immutable")
+		}
+		if s.backupDir != nil {
+			return nil, errors.New("can't use --no-check-dest with --backup-dir")
 		}
 	}
 	if fs.Config.CompareDest != "" {
