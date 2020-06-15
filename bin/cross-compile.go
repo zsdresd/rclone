@@ -172,7 +172,7 @@ func buildDebAndRpm(dir, version, goarch string) []string {
 }
 
 // generate system object (syso) file to be picked up by a following go build for embedding icon and version info resources into windows executable
-func buildWindowsResourceSyso(goarch string, versionTag string) (string) {
+func buildWindowsResourceSyso(goarch string, versionTag string) string {
 	type M map[string]interface{}
 	version := strings.TrimPrefix(versionTag, "v")
 	semanticVersion := semver.New(version)
@@ -227,6 +227,18 @@ func buildWindowsResourceSyso(goarch string, versionTag string) (string) {
 		}
 	}()
 
+	// Work out where go binaries have been installed
+	goEnvOut, err := exec.Command("go", "env", "GOPATH").Output()
+	if err != nil {
+		log.Printf("Failed to run go env: %v", err)
+		return ""
+	}
+	gopath := strings.TrimSpace(string(goEnvOut))
+	goversioninfo := filepath.Join(gopath, "bin", "goversioninfo")
+	if runtime.GOOS == "windows" {
+		goversioninfo += ".exe"
+	}
+
 	// Execute goversioninfo utility using the json file as input.
 	// It will produce a system object (syso) file that a following go build should pick up.
 	sysoPath, err := filepath.Abs("../resource_windows_" + goarch + ".syso") // Appending goos and goarch as suffix to avoid any race conditions, and also it is recognized by go build and avoids any builds for other systems considering it
@@ -235,7 +247,7 @@ func buildWindowsResourceSyso(goarch string, versionTag string) (string) {
 		return ""
 	}
 	args := []string{
-		"goversioninfo",
+		goversioninfo,
 		"-o",
 		sysoPath,
 		jsonPath,
