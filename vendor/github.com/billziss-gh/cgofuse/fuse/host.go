@@ -1,7 +1,7 @@
 /*
  * host.go
  *
- * Copyright 2017-2018 Bill Zissimopoulos
+ * Copyright 2017-2020 Bill Zissimopoulos
  */
 /*
  * This file is part of Cgofuse.
@@ -604,7 +604,11 @@ func (host *FileSystemHost) SetCapReaddirPlus(value bool) {
 // mountpoint must be non-empty.
 func (host *FileSystemHost) Mount(mountpoint string, opts []string) bool {
 	if 0 == c_hostFuseInit() {
-		panic("cgofuse: cannot find winfsp")
+		if "windows" == runtime.GOOS {
+			panic("cgofuse: cannot find winfsp")
+		} else {
+			panic("cgofuse: cannot find FUSE")
+		}
 	}
 
 	/*
@@ -830,7 +834,11 @@ func optNormStr(opt string) string {
 //
 func OptParse(args []string, format string, vals ...interface{}) (outargs []string, err error) {
 	if 0 == c_hostFuseInit() {
-		panic("cgofuse: cannot find winfsp")
+		if "windows" == runtime.GOOS {
+			panic("cgofuse: cannot find winfsp")
+		} else {
+			panic("cgofuse: cannot find FUSE")
+		}
 	}
 
 	defer func() {
